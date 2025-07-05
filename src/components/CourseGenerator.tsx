@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Book, Users, Clock, Mail, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen } from 'lucide-react';
 import { FormData, FormErrors, AppState } from '../types';
+import { sendCourseToN8N } from '../api/n8n';
 
 interface CourseGeneratorProps {
   onGenerate: (formData: FormData) => Promise<void>;

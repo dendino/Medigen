@@ -5,6 +5,7 @@ import { Header } from './components/Header';
 import { CourseGenerator } from './components/CourseGenerator';
 import { Dashboard } from './components/Dashboard';
 import { FormData, GeneratedFile, User, AppView } from './types';
+import { sendCourseToN8N } from './api/n8n';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
@@ -223,7 +224,7 @@ function App() {
       />
       
       {currentView === 'generator' && (
-        <CourseGenerator onGenerate={handleGenerate} />
+        <CourseGenerator onGenerate={sendCourseToN8N} />
       )}
       
       {currentView === 'dashboard' && (
