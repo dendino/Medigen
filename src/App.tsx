@@ -6,6 +6,7 @@ import { CourseGenerator } from './components/CourseGenerator';
 import { Dashboard } from './components/Dashboard';
 import { FormData, GeneratedFile, User, AppView } from './types';
 import { sendCourseToN8N } from './api/n8n';
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from './api/supabase';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
@@ -43,7 +44,7 @@ function App() {
   }, [files]);
 
   const handleGetStarted = () => {
-    setCurrentView('auth');
+    setCurrentView('auth'); // ou 'register' selon ton flow
   };
 
   const handleBackToLanding = () => {
@@ -51,28 +52,29 @@ function App() {
     setAuthError(null);
   };
 
+  // Connexion email
   const handleLogin = async (email: string, password: string) => {
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Demo credentials check
-      if (email === 'demo@coursgen.fr' && password === 'demo123') {
-        const newUser: User = {
-          id: '1',
-          email: email,
-          name: 'Professeur Démonstration',
-          provider: 'email'
-        };
-        
-        setUser(newUser);
-        localStorage.setItem('coursgen_user', JSON.stringify(newUser));
-        setCurrentView('dashboard');
+      const { data, error } = await signInWithEmail(email, password);
+      if (error) {
+        setAuthError(error.message);
+      } else if (!data.user.email_confirmed_at) {
+        // Email non vérifié
+        alert("Veuillez vérifier votre email avant de continuer.");
+        await signOut();
+        setCurrentView('auth');
       } else {
-        throw new Error('Identifiants incorrects');
+        setUser({
+          id: data.user.id,
+          email: data.user.email || '',
+          name: data.user.user_metadata?.name || data.user.email || '',
+          avatar: data.user.user_metadata?.avatar_url,
+          provider: (data.user.app_metadata?.provider as "email" | "google" | undefined) || 'email'
+        });
+        setCurrentView('dashboard');
       }
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Erreur de connexion');
@@ -81,52 +83,35 @@ function App() {
     }
   };
 
-  const handleRegister = async (name: string, email: string, password: string) => {
+  // Inscription email
+  const handleRegister = async (email: string, password: string) => {
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful registration
-      const newUser: User = {
-        id: Date.now().toString(),
-        email: email,
-        name: name,
-        provider: 'email'
-      };
-      
-      setUser(newUser);
-      localStorage.setItem('coursgen_user', JSON.stringify(newUser));
-      setCurrentView('dashboard');
-    } catch (error) {
-      setAuthError(error instanceof Error ? error.message : 'Erreur lors de la création du compte');
+      const { data, error } = await signUpWithEmail(email, password);
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        // Affiche un message de confirmation
+        alert("Un email de confirmation vient d'être envoyé. Veuillez vérifier votre boîte mail.");
+        // Redirige vers la page de connexion ou une page d'attente
+        setCurrentView('auth'); // ou une vue spéciale "Vérification email"
+      }
     } finally {
       setAuthLoading(false);
     }
   };
 
+  // Connexion Google
   const handleGoogleAuth = async () => {
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      // Simulate Google OAuth flow
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Simulate successful Google authentication
-      const newUser: User = {
-        id: 'google_' + Date.now(),
-        email: 'professeur@gmail.com',
-        name: 'Professeur Google',
-        avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=32&h=32&fit=crop&crop=face',
-        provider: 'google'
-      };
-      
-      setUser(newUser);
-      localStorage.setItem('coursgen_user', JSON.stringify(newUser));
-      setCurrentView('dashboard');
+      const { error } = await signInWithGoogle();
+      if (error) setAuthError(error.message);
+      // Redirection automatique par Supabase après succès
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Erreur lors de la connexion avec Google');
     } finally {
@@ -134,9 +119,10 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
+  // Déconnexion
+  const handleLogout = async () => {
+    await signOut();
     setUser(null);
-    localStorage.removeItem('coursgen_user');
     setCurrentView('landing');
   };
 

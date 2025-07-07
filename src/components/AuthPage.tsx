@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import { AuthFormData, AuthErrors } from '../types';
+import { resetPassword } from '../api/supabase';
 
 interface AuthPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -22,6 +23,11 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
     name: ''
   });
   const [validationErrors, setValidationErrors] = useState<AuthErrors>({});
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
 
   const validateForm = (): boolean => {
     const errors: AuthErrors = {};
@@ -91,6 +97,22 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
     });
   };
 
+  const handleResetPassword = async (email: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    setResetMessage(null);
+    try {
+      const { error } = await resetPassword(email);
+      if (error) {
+        setResetMessage(error.message);
+      } else {
+        setResetMessage("Un email de réinitialisation a été envoyé. Vérifie ta boîte mail.");
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-md w-full">
@@ -150,170 +172,231 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Name (Registration only) */}
-            {!isLoginMode && (
-              <div>
-                <label htmlFor="name" className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                  <User className="w-4 h-4 mr-2 text-blue-600" />
-                  Nom complet
-                </label>
-                <input
-                  type="text"
-                  id="name"
-                  value={formData.name || ''}
-                  onChange={(e) => handleInputChange('name', e.target.value)}
-                  placeholder="Dr. Marie Dubois"
-                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                    validationErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                  }`}
-                  disabled={isLoading}
-                />
-                {validationErrors.name && (
-                  <p className="mt-1 text-sm text-red-600 flex items-center">
-                    <AlertCircle className="w-4 h-4 mr-1" />
-                    {validationErrors.name}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Email */}
-            <div>
-              <label htmlFor="email" className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                <Mail className="w-4 h-4 mr-2 text-blue-600" />
-                Adresse email
+          {/* Password Reset Form */}
+          {showReset ? (
+            <form
+              onSubmit={e => {
+                e.preventDefault();
+                handleResetPassword(resetEmail);
+              }}
+              className="space-y-4 mb-6"
+            >
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Adresse email pour réinitialiser le mot de passe
               </label>
               <input
                 type="email"
-                id="email"
-                value={formData.email}
-                onChange={(e) => handleInputChange('email', e.target.value)}
+                value={resetEmail}
+                onChange={e => setResetEmail(e.target.value)}
+                className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors"
                 placeholder="votre.email@institution.fr"
-                className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                  validationErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'
-                }`}
-                disabled={isLoading}
+                disabled={authLoading}
+                required
               />
-              {validationErrors.email && (
-                <p className="mt-1 text-sm text-red-600 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
-                  {validationErrors.email}
-                </p>
+              <button
+                type="submit"
+                className="w-full bg-gradient-to-r from-blue-600 to-teal-600 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-700 hover:to-teal-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={authLoading}
+              >
+                {authLoading ? "Envoi en cours..." : "Envoyer le lien de réinitialisation"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReset(false);
+                  setResetMessage(null);
+                }}
+                className="w-full mt-2 text-blue-600 hover:text-blue-700 font-medium"
+                disabled={authLoading}
+              >
+                Retour à la connexion
+              </button>
+              {resetMessage && (
+                <div className={`mt-2 flex items-center text-sm ${resetMessage.includes("envoyé") ? "text-green-600" : "text-red-600"}`}>
+                  {resetMessage.includes("envoyé") ? <CheckCircle className="w-4 h-4 mr-1" /> : <AlertCircle className="w-4 h-4 mr-1" />}
+                  {resetMessage}
+                </div>
               )}
-            </div>
+            </form>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Name (Registration only) */}
+              {!isLoginMode && (
+                <div>
+                  <label htmlFor="name" className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                    <User className="w-4 h-4 mr-2 text-blue-600" />
+                    Nom complet
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    value={formData.name || ''}
+                    onChange={(e) => handleInputChange('name', e.target.value)}
+                    placeholder="Dr. Marie Dubois"
+                    className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                      validationErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                    }`}
+                    disabled={isLoading}
+                  />
+                  {validationErrors.name && (
+                    <p className="mt-1 text-sm text-red-600 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {validationErrors.name}
+                    </p>
+                  )}
+                </div>
+              )}
 
-            {/* Password */}
-            <div>
-              <label htmlFor="password" className="flex items-center text-sm font-medium text-gray-700 mb-2">
-                <Lock className="w-4 h-4 mr-2 text-blue-600" />
-                Mot de passe
-              </label>
-              <div className="relative">
+              {/* Email */}
+              <div>
+                <label htmlFor="email" className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                  <Mail className="w-4 h-4 mr-2 text-blue-600" />
+                  Adresse email
+                </label>
                 <input
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  value={formData.password}
-                  onChange={(e) => handleInputChange('password', e.target.value)}
-                  placeholder={isLoginMode ? 'Votre mot de passe' : 'Minimum 8 caractères'}
-                  className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                    validationErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                  type="email"
+                  id="email"
+                  value={formData.email}
+                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  placeholder="votre.email@institution.fr"
+                  className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                    validationErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
                   disabled={isLoading}
                 />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                >
-                  {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                </button>
+                {validationErrors.email && (
+                  <p className="mt-1 text-sm text-red-600 flex items-center">
+                    <AlertCircle className="w-4 h-4 mr-1" />
+                    {validationErrors.email}
+                  </p>
+                )}
               </div>
-              {validationErrors.password && (
-                <p className="mt-1 text-sm text-red-600 flex items-center">
-                  <AlertCircle className="w-4 h-4 mr-1" />
-                  {validationErrors.password}
-                </p>
-              )}
-            </div>
 
-            {/* Confirm Password (Registration only) */}
-            {!isLoginMode && (
+              {/* Password */}
               <div>
-                <label htmlFor="confirmPassword" className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                <label htmlFor="password" className="flex items-center text-sm font-medium text-gray-700 mb-2">
                   <Lock className="w-4 h-4 mr-2 text-blue-600" />
-                  Confirmer le mot de passe
+                  Mot de passe
                 </label>
                 <div className="relative">
                   <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    id="confirmPassword"
-                    value={formData.confirmPassword || ''}
-                    onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                    placeholder="Confirmez votre mot de passe"
+                    type={showPassword ? 'text' : 'password'}
+                    id="password"
+                    value={formData.password}
+                    onChange={(e) => handleInputChange('password', e.target.value)}
+                    placeholder={isLoginMode ? 'Votre mot de passe' : 'Minimum 8 caractères'}
                     className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
-                      validationErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                      validationErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'
                     }`}
                     disabled={isLoading}
                   />
                   <button
                     type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                   >
-                    {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
-                {validationErrors.confirmPassword && (
+                {validationErrors.password && (
                   <p className="mt-1 text-sm text-red-600 flex items-center">
                     <AlertCircle className="w-4 h-4 mr-1" />
-                    {validationErrors.confirmPassword}
+                    {validationErrors.password}
                   </p>
                 )}
               </div>
-            )}
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full bg-gradient-to-r from-blue-600 to-teal-600 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-700 hover:to-teal-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isLoading ? (
-                <span className="flex items-center justify-center">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                  {isLoginMode ? 'Connexion...' : 'Création du compte...'}
-                </span>
-              ) : (
-                isLoginMode ? 'Se connecter' : 'Créer mon compte'
+              {/* Confirm Password (Registration only) */}
+              {!isLoginMode && (
+                <div>
+                  <label htmlFor="confirmPassword" className="flex items-center text-sm font-medium text-gray-700 mb-2">
+                    <Lock className="w-4 h-4 mr-2 text-blue-600" />
+                    Confirmer le mot de passe
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      id="confirmPassword"
+                      value={formData.confirmPassword || ''}
+                      onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                      placeholder="Confirmez votre mot de passe"
+                      className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
+                        validationErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'
+                      }`}
+                      disabled={isLoading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      {showConfirmPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    </button>
+                  </div>
+                  {validationErrors.confirmPassword && (
+                    <p className="mt-1 text-sm text-red-600 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {validationErrors.confirmPassword}
+                    </p>
+                  )}
+                </div>
               )}
-            </button>
 
-            {/* Terms (Registration only) */}
-            {!isLoginMode && (
-              <div className="text-xs text-gray-500 text-center">
-                En créant un compte, vous acceptez nos{' '}
-                <a href="#" className="text-blue-600 hover:underline">Conditions d'utilisation</a>
-                {' '}et notre{' '}
-                <a href="#" className="text-blue-600 hover:underline">Politique de confidentialité</a>
-              </div>
-            )}
-
-            {/* Mode Toggle */}
-            <div className="text-center">
+              {/* Submit Button */}
               <button
-                type="button"
-                onClick={toggleMode}
-                className="text-blue-600 hover:text-blue-700 font-medium"
+                type="submit"
                 disabled={isLoading}
+                className="w-full bg-gradient-to-r from-blue-600 to-teal-600 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-700 hover:to-teal-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoginMode ? 
-                  "Pas encore de compte ? Créer un compte" : 
-                  "Déjà un compte ? Se connecter"
-                }
+                {isLoading ? (
+                  <span className="flex items-center justify-center">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                    {isLoginMode ? 'Connexion...' : 'Création du compte...'}
+                  </span>
+                ) : (
+                  isLoginMode ? 'Se connecter' : 'Créer mon compte'
+                )}
               </button>
-            </div>
-          </form>
+
+              {/* Password Reset (Login mode only) */}
+              {isLoginMode && (
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => setShowReset(true)}
+                    className="text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    Mot de passe oublié ?
+                  </button>
+                </div>
+              )}
+
+              {/* Terms (Registration only) */}
+              {!isLoginMode && (
+                <div className="text-xs text-gray-500 text-center">
+                  En créant un compte, vous acceptez nos{' '}
+                  <a href="#" className="text-blue-600 hover:underline">Conditions d'utilisation</a>
+                  {' '}et notre{' '}
+                  <a href="#" className="text-blue-600 hover:underline">Politique de confidentialité</a>
+                </div>
+              )}
+
+              {/* Mode Toggle */}
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={toggleMode}
+                  className="text-blue-600 hover:text-blue-700 font-medium"
+                  disabled={isLoading}
+                >
+                  {isLoginMode ? 
+                    "Pas encore de compte ? Créer un compte" : 
+                    "Déjà un compte ? Se connecter"
+                  }
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* Demo credentials for login mode */}
           {isLoginMode && (
