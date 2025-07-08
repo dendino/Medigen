@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle, ArrowLeft } from 'lucide-react';
 import { AuthFormData, AuthErrors } from '../types';
-import { resetPassword } from '../api/supabase';
+import { resetPassword, signUpWithEmail } from '../api/supabase';
+import { supabase } from '../api/supabase';
 
 interface AuthPageProps {
   onLogin: (email: string, password: string) => Promise<void>;
@@ -11,6 +12,9 @@ interface AuthPageProps {
   isLoading: boolean;
   error: string | null;
 }
+
+
+
 
 export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading, error }: AuthPageProps) {
   const [isLoginMode, setIsLoginMode] = useState(true);
@@ -28,15 +32,16 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
   const [showReset, setShowReset] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [registerSuccess, setRegisterSuccess] = useState<string | null>(null);
 
   const validateForm = (): boolean => {
     const errors: AuthErrors = {};
 
     // Email validation
     if (!formData.email.trim()) {
-      errors.email = 'L\'adresse email est requise';
+      errors.email = "L'adresse email est requise";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      errors.email = 'Adresse email invalide';
+      errors.email = "Adresse email invalide";
     }
 
     // Password validation
@@ -71,7 +76,7 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
       if (isLoginMode) {
         await onLogin(formData.email, formData.password);
       } else {
-        await onRegister(formData.name!, formData.email, formData.password);
+        await handleRegister(formData.name!, formData.email, formData.password);
       }
     } catch (err) {
       // Error is handled by parent component
@@ -113,6 +118,35 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
     }
   };
 
+  const handleRegister = async (name: string, email: string, password: string) => {
+    setAuthLoading(true);
+    setAuthError(null);
+    setRegisterSuccess(null);
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        setAuthError("Email invalide. Veuillez vérifier le format.");
+        return;
+      }
+      const { data, error } = await signUpWithEmail(cleanEmail, password);
+      if (error) {
+        setAuthError(error.message);
+      } else {
+        setRegisterSuccess("Compte créé ! Un email de confirmation vient d'être envoyé. Veuillez vérifier votre boîte mail avant de vous connecter.");
+        // Optionnel : reset le formulaire
+        setFormData({
+          email: '',
+          password: '',
+          confirmPassword: '',
+          name: ''
+        });
+      }
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-md w-full">
@@ -142,7 +176,7 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
           {/* Google Auth Button */}
           <button
             onClick={onGoogleAuth}
-            disabled={isLoading}
+            disabled={authLoading}
             className="w-full flex items-center justify-center px-4 py-3 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors mb-6 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-5 h-5 mr-3" viewBox="0 0 24 24">
@@ -168,6 +202,26 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
               <div className="flex items-center text-red-700">
                 <AlertCircle className="w-4 h-4 mr-2" />
                 <span className="text-sm">{error}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Success Message (Registration only) */}
+          {registerSuccess && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center text-green-700">
+                <CheckCircle className="w-4 h-4 mr-2" />
+                <span className="text-sm">{registerSuccess}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message (Registration only) */}
+          {authError && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
+              <div className="flex items-center text-red-700">
+                <AlertCircle className="w-4 h-4 mr-2" />
+                <span className="text-sm">{authError}</span>
               </div>
             </div>
           )}
@@ -236,7 +290,7 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
                     className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       validationErrors.name ? 'border-red-300 bg-red-50' : 'border-gray-300'
                     }`}
-                    disabled={isLoading}
+                    disabled={authLoading}
                   />
                   {validationErrors.name && (
                     <p className="mt-1 text-sm text-red-600 flex items-center">
@@ -257,12 +311,12 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
                   type="email"
                   id="email"
                   value={formData.email}
-                  onChange={(e) => handleInputChange('email', e.target.value)}
+                  onChange={e => setFormData({ ...formData, email: e.target.value.trim() })}
                   placeholder="votre.email@institution.fr"
                   className={`w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                     validationErrors.email ? 'border-red-300 bg-red-50' : 'border-gray-300'
                   }`}
-                  disabled={isLoading}
+                  disabled={authLoading}
                 />
                 {validationErrors.email && (
                   <p className="mt-1 text-sm text-red-600 flex items-center">
@@ -288,7 +342,7 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
                     className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                       validationErrors.password ? 'border-red-300 bg-red-50' : 'border-gray-300'
                     }`}
-                    disabled={isLoading}
+                    disabled={authLoading}
                   />
                   <button
                     type="button"
@@ -323,7 +377,7 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
                       className={`w-full px-4 py-3 pr-12 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors ${
                         validationErrors.confirmPassword ? 'border-red-300 bg-red-50' : 'border-gray-300'
                       }`}
-                      disabled={isLoading}
+                      disabled={authLoading}
                     />
                     <button
                       type="button"
@@ -345,10 +399,10 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={authLoading}
                 className="w-full bg-gradient-to-r from-blue-600 to-teal-600 text-white py-3 px-6 rounded-lg font-medium hover:from-blue-700 hover:to-teal-700 focus:ring-4 focus:ring-blue-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isLoading ? (
+                {authLoading ? (
                   <span className="flex items-center justify-center">
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
                     {isLoginMode ? 'Connexion...' : 'Création du compte...'}
@@ -387,7 +441,7 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
                   type="button"
                   onClick={toggleMode}
                   className="text-blue-600 hover:text-blue-700 font-medium"
-                  disabled={isLoading}
+                  disabled={authLoading}
                 >
                   {isLoginMode ? 
                     "Pas encore de compte ? Créer un compte" : 
