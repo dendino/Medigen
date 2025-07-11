@@ -29,9 +29,11 @@ export interface User {
   id: string;
   email: string;
   name: string;
+  lastname: string;
   avatar?: string;
   provider?: 'google' | 'email';
   plan: 'free' | 'premium';
+  credit_balance?: number; // Ajouter cette ligne
   generation_count: number;
 }
 

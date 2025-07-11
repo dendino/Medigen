@@ -32,7 +32,7 @@ export function CourseGenerator({ onGenerate, user, onUpgrade }: CourseGenerator
 
   const courseFormats = [
     { value: 'court', label: 'Court', description: 'Synthèse concise' },
-    { value: 'intermediaire', label: 'Intermédiaire', description: 'Équilibré et détaillé' },
+    { value: 'intermédiaire', label: 'Intermédiaire', description: 'Équilibré et détaillé' },
     { value: 'long', label: 'Long', description: 'Exhaustif et approfondi' }
   ];
 
@@ -65,6 +65,10 @@ export function CourseGenerator({ onGenerate, user, onUpgrade }: CourseGenerator
       newErrors.email = 'L\'adresse email est requise';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Adresse email invalide';
+    }
+
+    if (user.plan === 'free' && formData.courseFormat !== 'court') {
+      newErrors.courseFormat = 'Format réservé aux abonnés premium. Veuillez sélectionner "Court" ou passer au plan Premium.';
     }
 
     setErrors(newErrors);

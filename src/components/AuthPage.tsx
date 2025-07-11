@@ -73,13 +73,21 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
     if (!validateForm()) return;
 
     try {
-      if (isLoginMode) {
-        await onLogin(formData.email, formData.password);
-      } else {
-        await handleRegister(formData.name!, formData.email, formData.password);
-      }
-    } catch (err) {
-      // Error is handled by parent component
+        if (isLoginMode) {
+            const user = await onLogin(formData.email, formData.password);
+            // Vérifier les crédits après connexion
+            const { data, error } = await supabase.from('profiles').select('credit_balance, plan').eq('user_id', user.id).single();
+            if (error) throw new Error(error.message);
+            if (data.credit_balance < 1) {
+                setAuthError("Crédits insuffisants pour générer des supports.");
+                return;
+            }
+        } else {
+            await handleRegister(formData.name!, formData.email, formData.password);
+        }
+    } catch (err: any) {
+        // Gérer les erreurs ici
+        setAuthError(err.message);
     }
   };
 
@@ -129,11 +137,12 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
         setAuthError("Email invalide. Veuillez vérifier le format.");
         return;
       }
-      const { data, error } = await signUpWithEmail(cleanEmail, password);
-      if (error) {
-        setAuthError(error.message);
-      } else {
-        setRegisterSuccess("Compte créé ! Un email de confirmation vient d'être envoyé. Veuillez vérifier votre boîte mail avant de vous connecter.");
+      // Correction: signUpWithEmail now expects 4 arguments (email, password, name, options)
+      const result = await signUpWithEmail(cleanEmail, password, name, "");
+      // signUpWithEmail returns void, so we can't destructure data/error
+      // Instead, check for errors via try/catch or handle error in signUpWithEmail
+      // Here, we assume signUpWithEmail throws on error
+      setRegisterSuccess("Compte créé ! Un email de confirmation vient d'être envoyé. Veuillez vérifier votre boîte mail avant de vous connecter.");
         // Optionnel : reset le formulaire
         setFormData({
           email: '',
@@ -141,7 +150,8 @@ export function AuthPage({ onLogin, onRegister, onGoogleAuth, onBack, isLoading,
           confirmPassword: '',
           name: ''
         });
-      }
+    } catch (error: any) {
+      setAuthError(error?.message || "Erreur lors de la création du compte.");
     } finally {
       setAuthLoading(false);
     }

@@ -6,7 +6,8 @@ import { CourseGenerator } from './components/CourseGenerator';
 import { Dashboard } from './components/Dashboard';
 import { FormData, GeneratedFile, User, AppView } from './types';
 import { sendCourseToN8N } from './api/n8n';
-import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, incrementGenerationCount } from './api/supabase';
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, incrementGenerationCount, checkUserCredits } from './api/supabase';
+import { supabase } from './api/supabase';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
@@ -44,7 +45,7 @@ function App() {
   }, [files]);
 
   const handleGetStarted = () => {
-    setCurrentView('auth'); // ou 'register' selon ton flow
+    setCurrentView('auth');
   };
 
   const handleBackToLanding = () => {
@@ -67,15 +68,31 @@ function App() {
         await signOut();
         setCurrentView('auth');
       } else {
-        setUser({
+        // Récupère le profil à jour depuis la table profiles
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('plan, credit_balance, first_name, last_name')
+          .eq('id', data.user.id)
+          .single();
+
+        // Fallback sur user_metadata si besoin
+        const name = profile?.first_name || data.user.user_metadata?.name || '';
+        const lastname = profile?.last_name || data.user.user_metadata?.lastname || '';
+
+        const userData = {
           id: data.user.id,
           email: data.user.email || '',
-          name: data.user.user_metadata?.name || data.user.email || '',
+          name,
+          lastname,
           avatar: data.user.user_metadata?.avatar_url,
           provider: (data.user.app_metadata?.provider as "email" | "google" | undefined) || 'email',
-          plan: data.user.user_metadata?.plan || 'free',
+          plan: profile?.plan || 'free',
+          credit_balance: profile?.credit_balance ?? 0,
           generation_count: data.user.user_metadata?.generation_count ?? 0
-        });
+        };
+
+        setUser(userData);
+        localStorage.setItem('coursgen_user', JSON.stringify(userData));
         setCurrentView('dashboard');
       }
     } catch (error) {
@@ -86,20 +103,17 @@ function App() {
   };
 
   // Inscription email
-  const handleRegister = async (email: string, password: string) => {
+  const handleRegister = async (name: string, email: string, password: string) => {
     setAuthLoading(true);
     setAuthError(null);
 
     try {
-      const { data, error } = await signUpWithEmail(email, password);
-      if (error) {
-        setAuthError(error.message);
-      } else {
-        // Affiche un message de confirmation
-        alert("Un email de confirmation vient d'être envoyé. Veuillez vérifier votre boîte mail.");
-        // Redirige vers la page de connexion ou une page d'attente
-        setCurrentView('auth'); // ou une vue spéciale "Vérification email"
-      }
+      await signUpWithEmail(email, password, name, '');
+      // Affiche un message de confirmation
+      alert("Un email de confirmation vient d'être envoyé. Veuillez vérifier votre boîte mail.");
+      setCurrentView('auth');
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Erreur lors de l\'inscription');
     } finally {
       setAuthLoading(false);
     }
@@ -125,40 +139,137 @@ function App() {
   const handleLogout = async () => {
     await signOut();
     setUser(null);
+    localStorage.removeItem('coursgen_user');
     setCurrentView('landing');
   };
 
-  const handleGenerate = async (formData: FormData) => {
-    // Simulate file generation
-    await new Promise(resolve => setTimeout(resolve, 3000));
+  // Fonction pour actualiser les données utilisateur depuis la DB
+  const refreshUserData = async () => {
+    if (!user) return;
     
-    const newFiles: GeneratedFile[] = [
-      {
-        id: `ppt-${Date.now()}`,
-        title: `${formData.moduleTitle} - Présentation`,
-        createdAt: new Date(),
-        type: 'powerpoint',
-        fileUrl: '#',
-        status: 'ready'
-      },
-      {
-        id: `doc-${Date.now()}`,
-        title: `${formData.moduleTitle} - Résumé`,
-        createdAt: new Date(),
-        type: 'word',
-        fileUrl: '#',
-        status: 'ready'
+    try {
+      const { data: creditsData, error: creditsError } = await checkUserCredits(user.id);
+      if (creditsError) {
+        console.error('Erreur lors de la vérification des crédits:', creditsError);
+        return;
       }
-    ];
 
-    setFiles(prev => [...newFiles, ...prev]);
+      const updatedUser = {
+        ...user,
+        plan: creditsData?.plan || 'free',
+        credit_balance: creditsData?.credit_balance || 0
+      };
 
-    // Après succès :
-    if (user) {
-      const { data, error } = await incrementGenerationCount(user.id);
-      if (!error && data) {
-        setUser(prev => prev ? { ...prev, generation_count: data.generation_count } : prev);
+      setUser(updatedUser);
+      localStorage.setItem('coursgen_user', JSON.stringify(updatedUser));
+    } catch (error) {
+      console.error('Erreur lors de l\'actualisation:', error);
+    }
+  };
+
+  // Actualisation automatique toutes les 30 secondes
+  useEffect(() => {
+    if (!user) return;
+
+    const interval = setInterval(() => {
+      refreshUserData();
+    }, 30000); // 30 secondes
+
+    return () => clearInterval(interval);
+  }, [user]);
+
+  // Actualisation immédiate lors du changement de vue
+  useEffect(() => {
+    if (user && (currentView === 'generator' || currentView === 'dashboard')) {
+      refreshUserData();
+    }
+  }, [currentView, user]);
+
+  const handleGenerate = async (formData: FormData) => {
+    if (!user) throw new Error("Utilisateur non connecté");
+    
+    try {
+      // Actualiser les données utilisateur AVANT la génération
+      await refreshUserData();
+      
+      // Récupérer les données fraîches
+      const { data: creditsData, error: creditsError } = await checkUserCredits(user.id);
+      if (creditsError) throw new Error("Erreur lors de la vérification des crédits");
+      
+      if (!creditsData) throw new Error("Profil utilisateur non trouvé");
+      
+      // Vérifier si l'utilisateur a assez de crédits avec les données fraîches
+      const creditCost = formData.courseFormat === 'court' ? 1 : 
+                        formData.courseFormat === 'intermédiaire' ? 2 : 3;
+      
+      if (creditsData.plan === 'free') {
+        if (formData.courseFormat !== 'court') {
+          throw new Error("Format réservé aux abonnés premium");
+        }
+        if (creditsData.credit_balance < 1) {
+          throw new Error("Limite de génération gratuite atteinte");
+        }
+      } else if (creditsData.plan === 'premium') {
+        if (creditsData.credit_balance < creditCost) {
+          throw new Error(`Crédits insuffisants. Coût: ${creditCost}, Disponible: ${creditsData.credit_balance}`);
+        }
       }
+
+      // Récupérer le JWT
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw new Error("Token JWT manquant");
+
+      // Préparer les données pour n8n
+      const payload = {
+        title: formData.moduleTitle,
+        level: formData.studentLevel,
+        chapters: formData.chapters,
+        duration: formData.duration,
+        format: formData.courseFormat,
+        email: formData.email,
+        user_id: user.id,
+        token
+      };
+
+      // Appel au backend n8n
+      const result = await sendCourseToN8N(payload);
+
+      // Créer les fichiers générés
+      const newFiles: GeneratedFile[] = [
+        {
+          id: `ppt-${Date.now()}`,
+          title: `${formData.moduleTitle} - Présentation`,
+          createdAt: new Date(),
+          type: 'powerpoint',
+          fileUrl: result.pptx_url || '#',
+          status: 'ready'
+        },
+        {
+          id: `doc-${Date.now()}`,
+          title: `${formData.moduleTitle} - Résumé`,
+          createdAt: new Date(),
+          type: 'word',
+          fileUrl: result.docx_url || '#',
+          status: 'ready'
+        }
+      ];
+
+      setFiles(prev => [...newFiles, ...prev]);
+
+      // Incrémenter le compteur de générations
+      if (user) {
+        const { data, error } = await incrementGenerationCount(user.id);
+        if (!error && data) {
+          const updatedUser = { ...user, generation_count: data.generation_count };
+          setUser(updatedUser);
+          localStorage.setItem('coursgen_user', JSON.stringify(updatedUser));
+        }
+      }
+
+    } catch (error) {
+      console.error('Erreur lors de la génération:', error);
+      throw error;
     }
   };
 
@@ -219,11 +330,11 @@ function App() {
         onLogout={handleLogout}
       />
       
+      
       {currentView === 'generator' && user && (
         <CourseGenerator
           onGenerate={handleGenerate}
           user={user}
-          // onUpgrade={handleUpgrade}
         />
       )}
 

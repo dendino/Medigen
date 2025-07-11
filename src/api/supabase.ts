@@ -9,8 +9,15 @@ export async function signInWithEmail(email: string, password: string) {
   return supabase.auth.signInWithPassword({ email, password });
 }
 
-export async function signUpWithEmail(email: string, password: string) {
-  return supabase.auth.signUp({ email, password });
+export async function signUpWithEmail(email: string, password: string, name: string, lastname: string) {
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, lastname } } });
+  if (error) throw new Error(error.message);
+  // Vérifier que data.user existe avant d'accéder à son id
+  if (data.user && data.user.id) {
+    await supabase.from('profiles').insert([{ user_id: data.user.id, credit_balance: 1, plan: 'free' }]);
+  } else {
+    throw new Error('User information is missing after sign up.');
+  }
 }
 
 export async function signInWithGoogle() {
@@ -26,11 +33,15 @@ export async function resetPassword(email: string) {
 }
 
 export async function incrementGenerationCount(userId: string) {
+  const { data, error } = await supabase.rpc('increment_generation_count', { user_id: userId });
+  return { data, error };
+}
+
+export async function checkUserCredits(userId: string) {
   const { data, error } = await supabase
-    .from('users')
-    .update({ generation_count: supabase.raw('generation_count + 1') })
-    .eq('id', userId)
-    .select('generation_count')
+    .from('profiles')
+    .select('credit_balance, plan')
+    .eq('user_id', userId) // ou 'id' selon ta structure
     .single();
   return { data, error };
 }

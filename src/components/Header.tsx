@@ -1,14 +1,35 @@
-import React from 'react';
-import { GraduationCap, User, FileText, Plus, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { GraduationCap, User, FileText, Plus, LogOut, Crown, Sparkles } from 'lucide-react';
+import { supabase } from '../api/supabase';
 
 interface HeaderProps {
   currentView: 'generator' | 'dashboard' | 'landing' | 'auth';
   onViewChange: (view: 'generator' | 'dashboard') => void;
-  user: { email: string; name: string; avatar?: string; plan: 'premium' | 'free' } | null;
+  user: { 
+    email: string; 
+    name: string; 
+    lastname: string; 
+    avatar?: string; 
+    plan: 'premium' | 'free';
+    credit_balance?: number;
+  } | null;
   onLogout: () => void;
+  onRefreshUser?: () => void;
 }
 
 export function Header({ currentView, onViewChange, user, onLogout }: HeaderProps) {
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setUserName(`${user.user_metadata.name} ${user.user_metadata.lastname}`);
+      }
+    };
+    fetchUserProfile();
+  }, []);
+
   return (
     <header className="bg-white shadow-sm border-b">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
@@ -52,11 +73,25 @@ export function Header({ currentView, onViewChange, user, onLogout }: HeaderProp
           {user && (
             <div className="flex items-center space-x-4">
               <div className="flex flex-col items-end">
-                <span className="font-semibold text-gray-900">{user.name}</span>
-                <span className={`text-xs mt-0.5 px-2 py-0.5 rounded 
-                  ${user.plan === 'premium' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-700'}`}>
-                  {user.plan === 'premium' ? 'Premium' : 'Gratuit'}
-                </span>
+                <span className="font-semibold text-gray-900">{user.name} {user.lastname}</span>
+                <div className="flex items-center mt-1 space-x-2">
+                  {user.plan === 'premium' ? (
+                    <div className="flex items-center bg-gradient-to-r from-yellow-100 to-orange-100 text-yellow-800 px-2 py-1 rounded-full text-xs font-medium">
+                      <Crown className="w-3 h-3 mr-1" />
+                      Premium
+                    </div>
+                  ) : (
+                    <div className="flex items-center bg-blue-100 text-blue-700 px-2 py-1 rounded-full text-xs font-medium">
+                      <Sparkles className="w-3 h-3 mr-1" />
+                      Gratuit
+                    </div>
+                  )}
+                  {user.credit_balance !== undefined && (
+                    <div className="text-xs text-gray-500">
+                      {user.credit_balance} crédit{user.credit_balance > 1 ? 's' : ''}
+                    </div>
+                  )}
+                </div>
               </div>
               <button
                 onClick={onLogout}

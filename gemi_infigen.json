@@ -1,0 +1,555 @@
+{
+  "name": "gemi_infigen",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-support",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "acb523e9-f517-401c-9a3e-4f6dcc9cc8f7",
+      "name": "Webhook - Génération de support",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2040,
+        -180
+      ],
+      "webhookId": "3bafd3c1-6f4b-467a-9543-343823b04cb5"
+    },
+    {
+      "parameters": {
+        "jsCode": "const jwt = require('jsonwebtoken');\nconst secret = $env.JWT_SECRET; // Ensure JWT_SECRET is set as an environment variable in n8n\nconst token = $json[\"headers\"]?.authorization?.replace('Bearer ', '');\n\nif (!token) {\n  throw new Error('Token manquant');\n}\n\ntry {\n  const decoded = jwt.verify(token, secret);\n  return [{json: {user_id: decoded.sub, email: decoded.email}}];\n} catch (error) {\n  // Handle JWT verification errors (e.g., invalid token, expired token)\n  throw new Error('JWT Invalide ou expiré: ' + error.message);\n}"
+      },
+      "id": "46667434-a87e-4698-a757-62e38f0a5a8e",
+      "name": "Vérifier JWT",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1800,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://utyvtruyonihomampwjc.supabase.co/rest/v1/profiles?user_id=eq={{$json[\"user_id\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0eXZ0cnV5b25paG9tYW1wd2pjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NjgxOTksImV4cCI6MjA2NzI0NDE5OX0.hTvUxydDdOoIObXHEfpCCLwuQYcOpX7u_xBQE1Lb1sI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $connections.supabaseApi.serviceRoleKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d14e9833-c7c9-4860-a63e-4aabb96484e5",
+      "name": "Récupérer profil Supabase",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1540,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const profile = $node[\"Récupérer profil Supabase\"].json[0];\nif (!profile) {\n  throw new Error('Profil utilisateur non trouvé.');\n}\n\nconst plan = profile.plan;\nconst credit_balance = profile.credit_balance;\nconst format = $node[\"Webhook - Génération de support\"].json[\"format\"];\n\nlet creditCost = 1;\nif (format === \"intermédiaire\") creditCost = 2;\nif (format === \"long\") creditCost = 3;\n\nlet errorMessages = [];\n\nif (plan === \"free\") {\n  if (format !== \"court\") {\n    errorMessages.push(\"Format '\" + format + \"' est réservé aux abonnés premium.\");\n  }\n  // Assuming 'free' users get 1 credit total for one generation\n  if (credit_balance < 1) {\n    errorMessages.push(\"Limite de génération gratuite atteinte.\");\n  }\n} else if (plan === \"premium\") {\n  if (credit_balance < creditCost) {\n    errorMessages.push(\"Crédits insuffisants. Coût: \" + creditCost + \", Disponible: \" + credit_balance);\n  }\n} else {\n  errorMessages.push(\"Plan inconnu: \" + plan);\n}\n\nif (errorMessages.length > 0) {\n  // Combine all errors into a single message or throw the first one\n  throw new Error(errorMessages.join('\\n'));\n}\n\nreturn [{json: {creditCost, updated_credit_balance: credit_balance - creditCost, user_plan: plan, user_id: profile.user_id}}];"
+      },
+      "id": "1c633b5f-b0ad-45e0-a4bc-301bf9b03705",
+      "name": "Vérifier droits/crédits",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1300,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "prompt": "Génère le support de cours infirmier pour le module : {{$node[\"Webhook - Génération de support\"].json[\"title\"]}}\\nNiveau : {{$node[\"Webhook - Génération de support\"].json[\"level\"]}}\\nChapitres : {{$node[\"Webhook - Génération de support\"].json[\"chapters\"]}}\\nDurée : {{$node[\"Webhook - Génération de support\"].json[\"duration\"]}}\\nFormat : {{$node[\"Webhook - Génération de support\"].json[\"format\"]}}\\nFournis le contenu pour un PPTX et un résumé DOCX. Structure le contenu clairement pour les deux formats.",
+        "options": {},
+        "requestOptions": {}
+      },
+      "id": "0ea68911-fac3-49fd-a67c-b9591a588683",
+      "name": "Générer contenu OpenAI",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 1.1,
+      "position": [
+        -1040,
+        -180
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "uBCyE8LgXS1EdZJg",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "language": "python",
+        "pythonCode": "# This node needs a full Python implementation to generate PPTX and DOCX files.\n# You will need to install 'python-pptx' and 'python-docx' libraries in your n8n environment.\n# The input should be the text content from the 'Générer contenu OpenAI' node.\n#\n# Example of what this node should do:\n# from pptx import Presentation\n# from docx import Document\n# import io\n#\n# content_ai = n8n.getNodeParameter('input_data', 0).get('json', {}).get('response_from_openai', 'No content')\n# # Assume OpenAI output is structured, e.g., {'pptx_content': '...', 'docx_content': '...'}\n# # You'll need to parse content_ai to extract the PPTX and DOCX parts.\n#\n# # Generate PPTX\n# prs = Presentation()\n# # Add slides and content based on content_ai['pptx_content']\n# pptx_buffer = io.BytesIO()\n# prs.save(pptx_buffer)\n# pptx_buffer.seek(0)\n#\n# # Generate DOCX\n# doc = Document()\n# # Add paragraphs and content based on content_ai['docx_content']\n# docx_buffer = io.BytesIO()\n# doc.save(docx_buffer)\n# docx_buffer.seek(0)\n#\n# # Output binary data for both files. Each item should be a separate file.\n# # Ensure the file name and mime type are set correctly.\n# return [\n#     { \"binary\": { \"pptx_file\": {\"data\": pptx_buffer.getvalue(), \"mimeType\": \"application/vnd.openxmlformats-officedocument.presentationml.presentation\", \"fileName\": \"course.pptx\"} } },\n#     { \"binary\": { \"docx_file\": {\"data\": docx_buffer.getvalue(), \"mimeType\": \"application/vnd.openxmlformats-officedocument.wordprocessingml.document\", \"fileName\": \"summary.docx\"} } }\n# ]\n#\n# // Placeholder return for demonstration, needs actual implementation\nreturn [{json: {pptx_filename: 'course.pptx', docx_filename: 'summary.docx'}}];"
+      },
+      "id": "de5d376f-fe10-4926-815a-513f39961edd",
+      "name": "Créer fichiers PPTX/DOCX",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://utyvtruyonihomampwjc.supabase.co/storage/v1/object/upload/courses/{{ $json[\"user_id\"] }}/{{ $json[\"pptx_filename\"] }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0eXZ0cnV5b25paG9tYW1wd2pjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NjgxOTksImV4cCI6MjA2NzI0NDE5OX0.hTvUxydDdOoIObXHEfpCCLwuQYcOpX7u_xBQE1Lb1sI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $connections.supabaseApi.serviceRoleKey }}"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "options": {}
+      },
+      "id": "10f22ac2-d66c-4c5e-a4f7-3f0990637a62",
+      "name": "Upload PPTX Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        -220
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://utyvtruyonihomampwjc.supabase.co/storage/v1/object/upload/courses/{{ $json[\"user_id\"] }}/{{ $json[\"docx_filename\"] }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $connections.supabaseApi.apiKey }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $connections.supabaseApi.serviceRoleKey }}"
+            },
+            {
+              "name": "x-upsert",
+              "value": "true"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "options": {}
+      },
+      "id": "ad3bafd6-35cc-4c40-a85a-258d4c561e73",
+      "name": "Upload DOCX Storage",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -580,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://utyvtruyonihomampwjc.supabase.co/rest/v1/profiles?user_id=eq.{{$json[\"user_id\"]}}&select=*",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0eXZ0cnV5b25paG9tYW1wd2pjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NjgxOTksImV4cCI6MjA2NzI0NDE5OX0.hTvUxydDdOoIObXHEfpCCLwuQYcOpX7u_xBQE1Lb1sI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $connections.supabaseApi.serviceRoleKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "credit_balance",
+              "value": "={{ $node[\"Vérifier droits/crédits\"].json[\"updated_credit_balance\"] }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "77b09a4a-4273-40bd-921a-234843837102",
+      "name": "Déduire crédits",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -260,
+        -120
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://utyvtruyonihomampwjc.supabase.co/rest/v1/courses",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0eXZ0cnV5b25paG9tYW1wd2pjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NjgxOTksImV4cCI6MjA2NzI0NDE5OX0.hTvUxydDdOoIObXHEfpCCLwuQYcOpX7u_xBQE1Lb1sI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $connections.supabaseApi.serviceRoleKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "user_id",
+              "value": "={{ $json[\"user_id\"] }}"
+            },
+            {
+              "name": "title",
+              "value": "={{ $node[\"Webhook - Génération de support\"].json[\"title\"] }}"
+            },
+            {
+              "name": "level",
+              "value": "={{ $node[\"Webhook - Génération de support\"].json[\"level\"] }}"
+            },
+            {
+              "name": "chapters",
+              "value": "={{ $node[\"Webhook - Génération de support\"].json[\"chapters\"] }}"
+            },
+            {
+              "name": "duration",
+              "value": "={{ $node[\"Webhook - Génération de support\"].json[\"duration\"] }}"
+            },
+            {
+              "name": "format",
+              "value": "={{ $node[\"Webhook - Génération de support\"].json[\"format\"] }}"
+            },
+            {
+              "name": "pptx_url",
+              "value": "={{ $node[\"Upload PPTX Storage\"].json[\"publicUrl\"] }}"
+            },
+            {
+              "name": "docx_url",
+              "value": "={{ $node[\"Upload DOCX Storage\"].json[\"publicUrl\"] }}"
+            },
+            {
+              "name": "credit_cost",
+              "value": "={{ $node[\"Vérifier droits/crédits\"].json[\"creditCost\"] }}"
+            },
+            {
+              "name": "created_at",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "af88aa4c-cfb8-4309-9b37-1b8ff69ded98",
+      "name": "Stocker cours",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -40,
+        -180
+      ]
+    },
+    {
+      "parameters": {
+        "fromEmail": "support@medigen.com",
+        "toEmail": "={{$json[\"email\"]}}",
+        "subject": "Votre support de cours Medigen est prêt !",
+        "html": "<h3>Bonjour,</h3><p>Votre support de cours est prêt :</p><ul><li><a href=\"{{$node[\"Stocker cours\"].json[\"pptx_url\"]}}\">Télécharger le PPTX</a></li><li><a href=\"{{$node[\"Stocker cours\"].json[\"docx_url\"]}}\">Télécharger le DOCX</a></li></ul><p>Merci d'utiliser Medigen.</p>",
+        "options": {}
+      },
+      "id": "480c1485-110c-4fd3-908f-03ce572c167e",
+      "name": "Envoyer email prof",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        280,
+        -160
+      ],
+      "webhookId": "00f3b583-ee40-4bcf-9c4f-356da3f46a69"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stripe-credit-reset",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "4133ca79-d56e-4769-9e20-006c369e9244",
+      "name": "Webhook Stripe (crédit reset)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2040,
+        140
+      ],
+      "webhookId": "1e6a737c-253c-4c8e-8e3f-e13beb78fb6d"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This node parses the Stripe webhook payload to extract user_id and determine new credit balance.\n// The exact path to user_id will depend on your Stripe webhook event type (e.g., invoice.paid, customer.subscription.updated).\n// You may need to fetch the customer/subscription details from Stripe API if user_id is not directly in the payload.\n// For demonstration, let's assume 'user_id' is in 'data.object.client_reference_id' and 'plan_type' from subscription\n\nconst stripePayload = $json; // The incoming Stripe webhook data\n\nlet userId = null;\nlet newCreditBalance = 0; // Default or based on plan logic\n\n// Example for invoice.paid event - adjust according to your actual webhook event structure\nif (stripePayload.type === 'invoice.paid') {\n    // Assuming you store user_id as metadata on the customer or subscription\n    userId = stripePayload.data.object.customer_id; // This would be the Stripe Customer ID\n    // You'd typically need to query your own database (e.g., Supabase profiles) to map Stripe customer_id to your internal user_id\n    // and then determine the plan and set newCreditBalance based on the plan.\n    // Or, if you pass user_id as metadata in Stripe, you could access it like:\n    // userId = stripePayload.data.object.metadata?.user_id; \n\n    // For this example, let's just use a dummy user_id if one isn't clearly derived.\n    // In a real scenario, you MUST accurately map Stripe data to your user in Supabase.\n    if (!userId) {\n        // Fallback or error if user_id cannot be determined from Stripe payload\n        console.warn('User ID not found in Stripe payload for credit reset. Manual intervention may be needed.');\n        // Or throw an error if missing is critical\n        // throw new Error('User ID missing in Stripe webhook for credit reset.');\n        return []; // Stop execution if user ID is critical and missing\n    }\n\n    // Logic to determine newCreditBalance based on subscription plan\n    // This typically requires querying Stripe for subscription details or having this info in the webhook\n    // For example, if a 'premium' plan resets to 50 credits:\n    // newCreditBalance = 50;\n\n    // For a robust solution, you might need another HTTP Request node here to fetch user's Supabase profile\n    // to know their current plan and set the balance accordingly.\n\n    // For now, let's assume we get a user_id and a dummy newCreditBalance for premium plan\n    newCreditBalance = 50; // Example: Premium plan resets to 50 credits\n}\n\nreturn [{json: {user_id: userId, new_credit_balance: newCreditBalance}}];"
+      },
+      "id": "0c8d1f1d-ae4d-4b33-89cb-1e5be7e79505",
+      "name": "Parse Stripe Payload & Get User Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1800,
+        140
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://utyvtruyonihomampwjc.supabase.co/rest/v1/profiles?user_id=eq.{{$json[\"user_id\"]}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV0eXZ0cnV5b25paG9tYW1wd2pjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTE2NjgxOTksImV4cCI6MjA2NzI0NDE5OX0.hTvUxydDdOoIObXHEfpCCLwuQYcOpX7u_xBQE1Lb1sI"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer ={{ $connections.supabaseApi.serviceRoleKey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "credit_balance",
+              "value": "={{ $json[\"new_credit_balance\"] }}"
+            },
+            {
+              "name": "credit_reset_date",
+              "value": "={{ new Date().toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c2fb5d03-f779-40a9-b793-974ba511c15b",
+      "name": "Reset crédits après paiement",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1540,
+        140
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook - Génération de support": {
+      "main": [
+        [
+          {
+            "node": "Vérifier JWT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vérifier JWT": {
+      "main": [
+        [
+          {
+            "node": "Récupérer profil Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Récupérer profil Supabase": {
+      "main": [
+        [
+          {
+            "node": "Vérifier droits/crédits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Vérifier droits/crédits": {
+      "main": [
+        [
+          {
+            "node": "Générer contenu OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Générer contenu OpenAI": {
+      "main": [
+        [
+          {
+            "node": "Créer fichiers PPTX/DOCX",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Créer fichiers PPTX/DOCX": {
+      "main": [
+        [
+          {
+            "node": "Upload PPTX Storage",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload DOCX Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload PPTX Storage": {
+      "main": [
+        [
+          {
+            "node": "Déduire crédits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload DOCX Storage": {
+      "main": [
+        [
+          {
+            "node": "Déduire crédits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Déduire crédits": {
+      "main": [
+        [
+          {
+            "node": "Stocker cours",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stocker cours": {
+      "main": [
+        [
+          {
+            "node": "Envoyer email prof",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Stripe (crédit reset)": {
+      "main": [
+        [
+          {
+            "node": "Parse Stripe Payload & Get User Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Stripe Payload & Get User Data": {
+      "main": [
+        [
+          {
+            "node": "Reset crédits après paiement",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b292488a-b929-4f70-b650-df049f0e8236",
+  "meta": {
+    "instanceId": "ddf27fa25373c653229c680cc8410def5f6792e54a2d0ca939074c89e9e91fef"
+  },
+  "id": "L3pQMmdp6k2BBIc2",
+  "tags": []
+}
