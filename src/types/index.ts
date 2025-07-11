@@ -31,6 +31,8 @@ export interface User {
   name: string;
   avatar?: string;
   provider?: 'google' | 'email';
+  plan: 'free' | 'premium';
+  generation_count: number;
 }
 
 export type AppState = 'form' | 'loading' | 'success' | 'error';

@@ -24,3 +24,13 @@ export async function signOut() {
 export async function resetPassword(email: string) {
   return supabase.auth.resetPasswordForEmail(email);
 }
+
+export async function incrementGenerationCount(userId: string) {
+  const { data, error } = await supabase
+    .from('users')
+    .update({ generation_count: supabase.raw('generation_count + 1') })
+    .eq('id', userId)
+    .select('generation_count')
+    .single();
+  return { data, error };
+}

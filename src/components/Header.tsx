@@ -4,7 +4,7 @@ import { GraduationCap, User, FileText, Plus, LogOut } from 'lucide-react';
 interface HeaderProps {
   currentView: 'generator' | 'dashboard' | 'landing' | 'auth';
   onViewChange: (view: 'generator' | 'dashboard') => void;
-  user: { email: string; name: string; avatar?: string } | null;
+  user: { email: string; name: string; avatar?: string; plan: 'premium' | 'free' } | null;
   onLogout: () => void;
 }
 
@@ -51,23 +51,17 @@ export function Header({ currentView, onViewChange, user, onLogout }: HeaderProp
 
           {user && (
             <div className="flex items-center space-x-4">
-              <div className="flex items-center text-sm text-gray-700">
-                {user.avatar ? (
-                  <img 
-                    src={user.avatar} 
-                    alt={user.name}
-                    className="w-6 h-6 rounded-full mr-2"
-                  />
-                ) : (
-                  <User className="w-4 h-4 mr-2" />
-                )}
-                <span>{user.name}</span>
+              <div className="flex flex-col items-end">
+                <span className="font-semibold text-gray-900">{user.name}</span>
+                <span className={`text-xs mt-0.5 px-2 py-0.5 rounded 
+                  ${user.plan === 'premium' ? 'bg-yellow-100 text-yellow-800' : 'bg-blue-100 text-blue-700'}`}>
+                  {user.plan === 'premium' ? 'Premium' : 'Gratuit'}
+                </span>
               </div>
               <button
                 onClick={onLogout}
-                className="flex items-center px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                className="ml-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                <LogOut className="w-4 h-4 mr-2" />
                 Déconnexion
               </button>
             </div>

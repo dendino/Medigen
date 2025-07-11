@@ -6,7 +6,7 @@ import { CourseGenerator } from './components/CourseGenerator';
 import { Dashboard } from './components/Dashboard';
 import { FormData, GeneratedFile, User, AppView } from './types';
 import { sendCourseToN8N } from './api/n8n';
-import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut } from './api/supabase';
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, signOut, incrementGenerationCount } from './api/supabase';
 
 function App() {
   const [currentView, setCurrentView] = useState<AppView>('landing');
@@ -72,7 +72,9 @@ function App() {
           email: data.user.email || '',
           name: data.user.user_metadata?.name || data.user.email || '',
           avatar: data.user.user_metadata?.avatar_url,
-          provider: (data.user.app_metadata?.provider as "email" | "google" | undefined) || 'email'
+          provider: (data.user.app_metadata?.provider as "email" | "google" | undefined) || 'email',
+          plan: data.user.user_metadata?.plan || 'free',
+          generation_count: data.user.user_metadata?.generation_count ?? 0
         });
         setCurrentView('dashboard');
       }
@@ -150,6 +152,14 @@ function App() {
     ];
 
     setFiles(prev => [...newFiles, ...prev]);
+
+    // Après succès :
+    if (user) {
+      const { data, error } = await incrementGenerationCount(user.id);
+      if (!error && data) {
+        setUser(prev => prev ? { ...prev, generation_count: data.generation_count } : prev);
+      }
+    }
   };
 
   const handleDownload = (fileId: string) => {
@@ -209,12 +219,16 @@ function App() {
         onLogout={handleLogout}
       />
       
-      {currentView === 'generator' && (
-        <CourseGenerator onGenerate={sendCourseToN8N} />
+      {currentView === 'generator' && user && (
+        <CourseGenerator
+          onGenerate={handleGenerate}
+          user={user}
+          // onUpgrade={handleUpgrade}
+        />
       )}
-      
-      {currentView === 'dashboard' && (
-        <Dashboard 
+
+      {currentView === 'dashboard' && user && (
+        <Dashboard
           files={files}
           onDownload={handleDownload}
           onDelete={handleDelete}

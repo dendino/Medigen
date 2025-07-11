@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { Book, Users, Clock, Mail, FileText, Download, CheckCircle, AlertCircle, Loader2, BookOpen } from 'lucide-react';
-import { FormData, FormErrors, AppState } from '../types';
+import { FormData, FormErrors, AppState, User } from '../types';
 import { sendCourseToN8N } from '../api/n8n';
+
 
 interface CourseGeneratorProps {
   onGenerate: (formData: FormData) => Promise<void>;
+  user: User;
+  onUpgrade?: () => void;
 }
 
-export function CourseGenerator({ onGenerate }: CourseGeneratorProps) {
+export function CourseGenerator({ onGenerate, user, onUpgrade }: CourseGeneratorProps) {
   const [state, setState] = useState<AppState>('form');
   const [formData, setFormData] = useState<FormData>({
     moduleTitle: '',
@@ -18,6 +21,7 @@ export function CourseGenerator({ onGenerate }: CourseGeneratorProps) {
     email: ''
   });
   const [errors, setErrors] = useState<FormErrors>({});
+  const [blockMessage, setBlockMessage] = useState<string | null>(null);
 
   const studentLevels = [
     { value: 'premiere-annee', label: 'Première année' },
@@ -49,7 +53,7 @@ export function CourseGenerator({ onGenerate }: CourseGeneratorProps) {
 
     if (!formData.duration.trim()) {
       newErrors.duration = 'La durée du module est requise';
-    } else if (!/^\d+\s*(h|heures?|hours?)?$/i.test(formData.duration.trim())) {
+    } else if (!/^[0-9]+\s*(h|heures?|hours?)?$/i.test(formData.duration.trim())) {
       newErrors.duration = 'Format invalide (ex: "20 heures" ou "20h")';
     }
 
@@ -69,13 +73,17 @@ export function CourseGenerator({ onGenerate }: CourseGeneratorProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+    // Blocage si plan free et déjà 1 génération
+    if (user.plan === 'free' && user.generation_count >= 1) {
+      setBlockMessage("Vous avez atteint la limite gratuite. Veuillez passer au plan Premium.");
+      return;
+    }
     if (!validateForm()) return;
-
     setState('loading');
-
+    setBlockMessage(null);
     try {
       await onGenerate(formData);
+      // Incrémenter le compteur côté parent (App.tsx) après succès
       setState('success');
     } catch (error) {
       setState('error');
@@ -101,6 +109,7 @@ export function CourseGenerator({ onGenerate }: CourseGeneratorProps) {
       email: ''
     });
     setErrors({});
+    setBlockMessage(null);
   };
 
   if (state === 'loading') {
@@ -207,7 +216,34 @@ export function CourseGenerator({ onGenerate }: CourseGeneratorProps) {
           <div className="px-8 py-6 bg-gradient-to-r from-blue-600 to-teal-600">
             <h2 className="text-2xl font-bold text-white">Créer un nouveau module</h2>
             <p className="text-blue-100 mt-1">Remplissez les informations ci-dessous pour générer vos supports</p>
+            {/* Affichage du plan et du compteur */}
+            <div className="mt-2 text-sm text-white flex items-center gap-4">
+              {user.plan === 'free' && (
+                <>
+                  <span>Plan gratuit — 1 génération max</span>
+                  <span className="bg-white text-blue-600 rounded px-2 py-1 font-semibold">{user.generation_count}/1</span>
+                </>
+              )}
+              {user.plan === 'premium' && (
+                <span className="bg-yellow-100 text-yellow-800 rounded px-2 py-1 font-semibold flex items-center"><CheckCircle className="w-4 h-4 mr-1" /> Premium</span>
+              )}
+            </div>
           </div>
+
+          {blockMessage && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-red-700 flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {blockMessage}
+              {user.plan === 'free' && user.generation_count >= 1 && onUpgrade && (
+                <button
+                  onClick={onUpgrade}
+                  className="ml-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                >
+                  Mettre à niveau vers Premium
+                </button>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="p-8 space-y-8">
             {/* Module Title */}
